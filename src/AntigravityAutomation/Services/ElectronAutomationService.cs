@@ -507,9 +507,14 @@ public sealed class ElectronAutomationService : IElectronAutomationService
 
                 try
                 {
-                    // 调用 FindAndClickAllowThisTimeAsync 点击交互行（含 shadowRoot 兜底搜索），
-                    // 再按 Enter 键确认（双保险：点击选中 + Enter 提交）。
-                    var (found, clicked) = await FindAndClickAllowThisTimeAsync(page, targetText);
+                    // 调用 FindAndClickAllowThisTimeAsync 点击交互行并获取详细 DOM 诊断信息
+                    var (found, clicked, diagInfo) = await FindAndClickAllowThisTimeAsync(page, targetText);
+
+                    if (!string.IsNullOrWhiteSpace(diagInfo))
+                    {
+                        _loggingService.LogInfo(diagInfo, step);
+                    }
+
                     if (clicked)
                     {
                         _loggingService.LogInfo("  已点击选中交互行", step);
@@ -678,50 +683,134 @@ public sealed class ElectronAutomationService : IElectronAutomationService
     }
 
     /// <summary>
-    /// 在指定页面 DOM 中搜索 targetText 文本节点（忽略大小写），找到后向上查找可点击的
-    /// 交互行元素（monaco-list-row / action-item / quick-input-list-entry 等）并点击选中。
+    /// 在指定页面 DOM 中搜索 targetText 文本节点（忽略大小写），找到后提取其 DOM 路径、
+    /// 标签、Class、可见性、尺寸及外层容器 HTML 等诊断信息，并尝试点击选中。
     /// 使用 TreeWalker 遍历所有文本节点，并递归进入 shadowRoot 覆盖 Web 组件场景。
     /// </summary>
     /// <param name="page">待搜索的页面。</param>
     /// <param name="targetText">待匹配的交互文本（不区分大小写）。</param>
-    /// <returns>(found: 是否找到文本, clicked: 是否成功点击交互行)。</returns>
-    private async Task<(bool found, bool clicked)> FindAndClickAllowThisTimeAsync(IPage page, string targetText)
+    /// <returns>(found: 是否找到文本, clicked: 是否成功点击交互行, diagInfo: 详细诊断文本)。</returns>
+    private async Task<(bool found, bool clicked, string diagInfo)> FindAndClickAllowThisTimeAsync(IPage page, string targetText)
     {
-        var result = await page.EvaluateAsync<string>("(target) => {" +
+        var jsonResult = await page.EvaluateAsync<string>(
+            "(target) => {" +
             "var lower = (target || '').toLowerCase();" +
-            "var r = { found: false, clicked: false, info: '' };" +
-            "function search(root) {" +
-              "if (!root) return;" +
-              "var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);" +
-              "while (w.nextNode()) {" +
-                "var t = w.currentNode.textContent;" +
-                "if (t && t.toLowerCase().includes(lower)) {" +
-                  "r.found = true;" +
-                  "r.info = t.trim().substring(0, 60);" +
-                  "var el = w.currentNode.parentElement;" +
-                  "var clickable = el;" +
-                  "var sel = '.monaco-list-row,.action-item,.quick-input-list-entry,.quick-input-row,.list-row,button,[role=button],.quick-input-list .monaco-list-row';" +
-                  "while (clickable && clickable !== document.body) {" +
-                    "if (clickable.matches && clickable.matches(sel)) { break; }" +
-                    "clickable = clickable.parentElement;" +
-                  "}" +
-                  "if (!clickable || clickable === document.body) { clickable = el; }" +
-                  "try { clickable.click(); r.clicked = true; } catch(e) { r.clicked = false; }" +
-                  "return;" +
+            "var r = {" +
+                "found: false," +
+                "clicked: false," +
+                "matchedText: ''," +
+                "tag: ''," +
+                "className: ''," +
+                "id: ''," +
+                "domPath: ''," +
+                "isVisible: false," +
+                "rectWidth: 0," +
+                "rectHeight: 0," +
+                "clickableTag: ''," +
+                "clickableClass: ''," +
+                "outerHtmlSnippet: ''" +
+            "};" +
+            "function getPath(el) {" +
+                "var path = [];" +
+                "var curr = el;" +
+                "while (curr && curr !== document.body && curr !== document.documentElement) {" +
+                    "var tag = curr.tagName ? curr.tagName.toLowerCase() : '';" +
+                    "var cls = (curr.className && typeof curr.className === 'string')" +
+                        "? '.' + curr.className.trim().split(/\\s+/).slice(0, 2).join('.')" +
+                        ": '';" +
+                    "path.unshift(tag + cls);" +
+                    "curr = curr.parentElement;" +
                 "}" +
-              "}" +
+                "return path.join(' > ');" +
+            "}" +
+            "function checkVisible(el) {" +
+                "if (!el) return false;" +
+                "var style = window.getComputedStyle(el);" +
+                "if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;" +
+                "var rect = el.getBoundingClientRect();" +
+                "return rect.width > 0 && rect.height > 0;" +
+            "}" +
+            "function search(root) {" +
+                "if (!root) return;" +
+                "var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);" +
+                "while (w.nextNode()) {" +
+                    "var t = w.currentNode.textContent;" +
+                    "if (t && t.toLowerCase().includes(lower)) {" +
+                        "var el = w.currentNode.parentElement;" +
+                        "if (!el) continue;" +
+                        "var isVis = checkVisible(el);" +
+                        "var rect = el.getBoundingClientRect();" +
+                        "r.found = true;" +
+                        "r.matchedText = t.trim().substring(0, 100);" +
+                        "r.tag = el.tagName || '';" +
+                        "r.className = (typeof el.className === 'string' ? el.className : '') || '';" +
+                        "r.id = el.id || '';" +
+                        "r.domPath = getPath(el);" +
+                        "r.isVisible = isVis;" +
+                        "r.rectWidth = Math.round(rect.width);" +
+                        "r.rectHeight = Math.round(rect.height);" +
+                        "var clickable = el;" +
+                        "var sel = '.monaco-list-row,.action-item,.quick-input-list-entry,.quick-input-row,.list-row,button,[role=button],.quick-input-list .monaco-list-row';" +
+                        "while (clickable && clickable !== document.body) {" +
+                            "if (clickable.matches && clickable.matches(sel)) { break; }" +
+                            "clickable = clickable.parentElement;" +
+                        "}" +
+                        "if (!clickable || clickable === document.body) { clickable = el; }" +
+                        "r.clickableTag = clickable.tagName || '';" +
+                        "r.clickableClass = (typeof clickable.className === 'string' ? clickable.className : '') || '';" +
+                        "r.outerHtmlSnippet = clickable.outerHTML ? clickable.outerHTML.substring(0, 240) : '';" +
+                        "try {" +
+                            "clickable.click();" +
+                            "r.clicked = true;" +
+                        "} catch (e) {" +
+                            "r.clicked = false;" +
+                        "}" +
+                        "return;" +
+                    "}" +
+                "}" +
             "}" +
             "search(document.body);" +
             "if (!r.found) {" +
-              "document.querySelectorAll('*').forEach(function(el) {" +
-                "if (el.shadowRoot && !r.found) search(el.shadowRoot);" +
-              "});" +
+                "document.querySelectorAll('*').forEach(function(el) {" +
+                    "if (el.shadowRoot && !r.found) search(el.shadowRoot);" +
+                "});" +
             "}" +
             "return JSON.stringify(r);" +
         "}", targetText);
 
-        var found = result.Contains("\"found\":true");
-        var clicked = result.Contains("\"clicked\":true");
-        return (found, clicked);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(jsonResult);
+            var root = doc.RootElement;
+            var found = root.GetProperty("found").GetBoolean();
+            var clicked = root.GetProperty("clicked").GetBoolean();
+            var matchedText = root.GetProperty("matchedText").GetString() ?? "";
+            var tag = root.GetProperty("tag").GetString() ?? "";
+            var className = root.GetProperty("className").GetString() ?? "";
+            var id = root.GetProperty("id").GetString() ?? "";
+            var domPath = root.GetProperty("domPath").GetString() ?? "";
+            var isVisible = root.GetProperty("isVisible").GetBoolean();
+            var rectW = root.GetProperty("rectWidth").GetInt32();
+            var rectH = root.GetProperty("rectHeight").GetInt32();
+            var clickableTag = root.GetProperty("clickableTag").GetString() ?? "";
+            var clickableClass = root.GetProperty("clickableClass").GetString() ?? "";
+            var outerHtml = root.GetProperty("outerHtmlSnippet").GetString() ?? "";
+
+            var diag = $"【DOM定位分析】\n" +
+                       $"  • 命中文字：\"{matchedText}\"\n" +
+                       $"  • 所在元素：<{tag}> (class='{className}', id='{id}')\n" +
+                       $"  • 可见状态：{(isVisible ? $"可见 (尺寸: {rectW}x{rectH})" : "不可见/隐藏")}\n" +
+                       $"  • DOM路径：{domPath}\n" +
+                       $"  • 触发点击容器：<{clickableTag} class='{clickableClass}'> (点击状态: {(clicked ? "成功" : "失败")})\n" +
+                       $"  • 容器HTML片段：{outerHtml}";
+
+            return (found, clicked, diag);
+        }
+        catch
+        {
+            var found = jsonResult.Contains("\"found\":true");
+            var clicked = jsonResult.Contains("\"clicked\":true");
+            return (found, clicked, $"原始分析结果: {jsonResult}");
+        }
     }
 }
