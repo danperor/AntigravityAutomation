@@ -430,16 +430,44 @@ public sealed class ElectronAutomationService : IElectronAutomationService
             {
                 // WaitForFunctionAsync 在浏览器端等待 targetText 文本出现。
                 // 最多等 WaitForFunctionTimeout，未出现则抛 TimeoutException。
-                // JS 用 TreeWalker 遍历 body 下所有文本节点进行大小写不敏感匹配。
+                // 仅匹配可见且处于按钮/交互行容器中的选项，智能过滤掉聊天历史/代码块中的普通文本。
                 await page.WaitForFunctionAsync(
                     "(target) => {" +
                         "var lower = (target || '').toLowerCase();" +
-                        "var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);" +
-                        "while (w.nextNode()) {" +
-                            "var t = w.currentNode.textContent;" +
-                            "if (t && t.toLowerCase().includes(lower)) return true;" +
+                        "function checkNode(node) {" +
+                            "if (!node || !node.textContent) return false;" +
+                            "var rawText = node.textContent.trim();" +
+                            "if (!rawText || !rawText.toLowerCase().includes(lower)) return false;" +
+                            "var el = node.parentElement;" +
+                            "if (!el) return false;" +
+                            "var isInsideCodeOrChat = el.closest('pre, code, .whitespace-pre-wrap, .rendered-markdown, .prose, .chat-markdown');" +
+                            "var isInsideButton = el.closest('button, [role=\"button\"], [role=\"option\"], [role=\"menuitem\"], .monaco-button, .monaco-list-row, .action-item, .quick-input-list-entry, .interactive-item');" +
+                            "if (isInsideCodeOrChat && !isInsideButton) return false;" +
+                            "if (rawText.length > 80 && !isInsideButton) return false;" +
+                            "var style = window.getComputedStyle(el);" +
+                            "if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;" +
+                            "var rect = el.getBoundingClientRect();" +
+                            "if (rect.width <= 0 || rect.height <= 0) return false;" +
+                            "var clickable = isInsideButton || el.closest('button, [role=\"button\"], [role=\"option\"], .monaco-list-row, .action-item, .quick-input-list-entry, .list-row');" +
+                            "if (!clickable && style.cursor !== 'pointer' && !el.getAttribute('onclick')) return false;" +
+                            "return true;" +
                         "}" +
-                        "return false;" +
+                        "function search(root) {" +
+                            "if (!root) return false;" +
+                            "var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);" +
+                            "while (w.nextNode()) {" +
+                                "if (checkNode(w.currentNode)) return true;" +
+                            "}" +
+                            "return false;" +
+                        "}" +
+                        "if (search(document.body)) return true;" +
+                        "var foundInShadow = false;" +
+                        "document.querySelectorAll('*').forEach(function(el) {" +
+                            "if (el.shadowRoot && !foundInShadow) {" +
+                                "if (search(el.shadowRoot)) foundInShadow = true;" +
+                            "}" +
+                        "});" +
+                        "return foundInShadow;" +
                     "}",
                     targetText,
                     new PageWaitForFunctionOptions
@@ -723,54 +751,55 @@ public sealed class ElectronAutomationService : IElectronAutomationService
                 "}" +
                 "return path.join(' > ');" +
             "}" +
-            "function checkVisible(el) {" +
-                "if (!el) return false;" +
+            "function checkNode(node) {" +
+                "if (!node || !node.textContent) return null;" +
+                "var rawText = node.textContent.trim();" +
+                "if (!rawText || !rawText.toLowerCase().includes(lower)) return null;" +
+                "var el = node.parentElement;" +
+                "if (!el) return null;" +
+                "var isInsideCodeOrChat = el.closest('pre, code, .whitespace-pre-wrap, .rendered-markdown, .prose, .chat-markdown');" +
+                "var isInsideButton = el.closest('button, [role=\"button\"], [role=\"option\"], [role=\"menuitem\"], .monaco-button, .monaco-list-row, .action-item, .quick-input-list-entry, .interactive-item');" +
+                "if (isInsideCodeOrChat && !isInsideButton) return null;" +
+                "if (rawText.length > 80 && !isInsideButton) return null;" +
                 "var style = window.getComputedStyle(el);" +
-                "if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;" +
+                "if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return null;" +
                 "var rect = el.getBoundingClientRect();" +
-                "return rect.width > 0 && rect.height > 0;" +
+                "if (rect.width <= 0 || rect.height <= 0) return null;" +
+                "var clickable = isInsideButton || el.closest('button, [role=\"button\"], [role=\"option\"], .monaco-list-row, .action-item, .quick-input-list-entry, .list-row');" +
+                "if (!clickable && style.cursor !== 'pointer' && !el.getAttribute('onclick')) return null;" +
+                "return { el: el, rawText: rawText, rect: rect, clickable: clickable || el };" +
             "}" +
             "function search(root) {" +
-                "if (!root) return;" +
+                "if (!root) return false;" +
                 "var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);" +
                 "while (w.nextNode()) {" +
-                    "var t = w.currentNode.textContent;" +
-                    "if (t && t.toLowerCase().includes(lower)) {" +
-                        "var el = w.currentNode.parentElement;" +
-                        "if (!el) continue;" +
-                        "var isVis = checkVisible(el);" +
-                        "var rect = el.getBoundingClientRect();" +
+                    "var res = checkNode(w.currentNode);" +
+                    "if (res) {" +
                         "r.found = true;" +
-                        "r.matchedText = t.trim().substring(0, 100);" +
-                        "r.tag = el.tagName || '';" +
-                        "r.className = (typeof el.className === 'string' ? el.className : '') || '';" +
-                        "r.id = el.id || '';" +
-                        "r.domPath = getPath(el);" +
-                        "r.isVisible = isVis;" +
-                        "r.rectWidth = Math.round(rect.width);" +
-                        "r.rectHeight = Math.round(rect.height);" +
-                        "var clickable = el;" +
-                        "var sel = '.monaco-list-row,.action-item,.quick-input-list-entry,.quick-input-row,.list-row,button,[role=button],.quick-input-list .monaco-list-row';" +
-                        "while (clickable && clickable !== document.body) {" +
-                            "if (clickable.matches && clickable.matches(sel)) { break; }" +
-                            "clickable = clickable.parentElement;" +
-                        "}" +
-                        "if (!clickable || clickable === document.body) { clickable = el; }" +
-                        "r.clickableTag = clickable.tagName || '';" +
-                        "r.clickableClass = (typeof clickable.className === 'string' ? clickable.className : '') || '';" +
-                        "r.outerHtmlSnippet = clickable.outerHTML ? clickable.outerHTML.substring(0, 240) : '';" +
+                        "r.matchedText = res.rawText.substring(0, 100);" +
+                        "r.tag = res.el.tagName || '';" +
+                        "r.className = (typeof res.el.className === 'string' ? res.el.className : '') || '';" +
+                        "r.id = res.el.id || '';" +
+                        "r.domPath = getPath(res.el);" +
+                        "r.isVisible = true;" +
+                        "r.rectWidth = Math.round(res.rect.width);" +
+                        "r.rectHeight = Math.round(res.rect.height);" +
+                        "var c = res.clickable;" +
+                        "r.clickableTag = c.tagName || '';" +
+                        "r.clickableClass = (typeof c.className === 'string' ? c.className : '') || '';" +
+                        "r.outerHtmlSnippet = c.outerHTML ? c.outerHTML.substring(0, 240) : '';" +
                         "try {" +
-                            "clickable.click();" +
+                            "c.click();" +
                             "r.clicked = true;" +
                         "} catch (e) {" +
                             "r.clicked = false;" +
                         "}" +
-                        "return;" +
+                        "return true;" +
                     "}" +
                 "}" +
+                "return false;" +
             "}" +
-            "search(document.body);" +
-            "if (!r.found) {" +
+            "if (!search(document.body)) {" +
                 "document.querySelectorAll('*').forEach(function(el) {" +
                     "if (el.shadowRoot && !r.found) search(el.shadowRoot);" +
                 "});" +
