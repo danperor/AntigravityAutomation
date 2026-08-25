@@ -233,14 +233,18 @@ public sealed class ElectronAutomationService : IElectronAutomationService
                 $"已通过 CDP 连接到 Antigravity IDE，页面标题：{pageTitle}（共 {context.Pages.Count} 个页面）",
                 stepConnect);
 
+            var targetText = string.IsNullOrWhiteSpace(config.YesAllowButtonText)
+                ? "Yes, allow this time"
+                : config.YesAllowButtonText.Trim();
+
             // ===== 步骤 3：进入持续监控循环 =====
             cancellationToken.ThrowIfCancellationRequested();
-            RaiseStatusChanged("监控中");
+            RaiseStatusChanged($"监控中（匹配文本：{targetText}）");
             _loggingService.LogInfo(
-                "开始持续监控 'Yes, allow this time' 交互项，检测到将自动按 Enter 确认",
+                $"开始持续监控包含 '{targetText}' 的交互项（忽略大小写），检测到将自动按 Enter 确认",
                 stepMonitor);
 
-            await MonitorAllowThisTimeLoopAsync(page, cancellationToken, stepMonitor);
+            await MonitorAllowThisTimeLoopAsync(page, targetText, cancellationToken, stepMonitor);
         }
         catch (OperationCanceledException)
         {
@@ -408,14 +412,15 @@ public sealed class ElectronAutomationService : IElectronAutomationService
     ///   * 取消令牌触发：正常退出循环并记 INFO 日志（含本次确认次数统计）。
     /// </summary>
     /// <param name="page">Antigravity IDE 主窗口页面；重连成功后会被更新为新 page 引用。</param>
+    /// <param name="targetText">待匹配的交互项文本（不区分大小写）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <param name="step">日志步骤名。</param>
     private async Task MonitorAllowThisTimeLoopAsync(
         IPage page,
+        string targetText,
         CancellationToken cancellationToken,
         string step)
     {
-
         var idleLogCounter = 0; // 空闲计数器，每 WaitForFunctionTimeout 记一次"仍在监控中"心跳。
 
         while (!cancellationToken.IsCancellationRequested)
@@ -423,17 +428,20 @@ public sealed class ElectronAutomationService : IElectronAutomationService
             bool detected = false;
             try
             {
-                // WaitForFunctionAsync 在浏览器端等待 "allow this time" 文本出现。
+                // WaitForFunctionAsync 在浏览器端等待 targetText 文本出现。
                 // 最多等 WaitForFunctionTimeout，未出现则抛 TimeoutException。
-                // JS 用 TreeWalker 遍历 body 下所有文本节点匹配（不递归 shadowRoot，
-                // 因 WaitForFunctionAsync 的表达式需保持轻量；shadowRoot 场景由
-                // 检测到后的 FindAndClickAllowThisTimeAsync 兜底覆盖）。
+                // JS 用 TreeWalker 遍历 body 下所有文本节点进行大小写不敏感匹配。
                 await page.WaitForFunctionAsync(
-                    "(function(){" +
-                        "var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);" +
-                        "while(w.nextNode()){if(w.currentNode.textContent&&w.currentNode.textContent.match(/allow this time/i))return true;}" +
+                    "(target) => {" +
+                        "var lower = (target || '').toLowerCase();" +
+                        "var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);" +
+                        "while (w.nextNode()) {" +
+                            "var t = w.currentNode.textContent;" +
+                            "if (t && t.toLowerCase().includes(lower)) return true;" +
+                        "}" +
                         "return false;" +
-                    "})()",
+                    "}",
+                    targetText,
                     new PageWaitForFunctionOptions
                     {
                         Timeout = (float)WaitForFunctionTimeout.TotalMilliseconds
@@ -443,13 +451,12 @@ public sealed class ElectronAutomationService : IElectronAutomationService
             catch (TimeoutException)
             {
                 // 等待超时未出现，记一次"仍在监控中"心跳日志，继续等待。
-                // idleLogCounter 不重置，持续累计，便于运维判断守护已静默运行多久。
                 idleLogCounter++;
                 _loggingService.LogInfo(
                     $"仍在监控中 - 已等待 {idleLogCounter * (int)WaitForFunctionTimeout.TotalSeconds} 秒，" +
-                    "尚未检测到 'Yes, allow this time'",
+                    $"尚未检测到包含 '{targetText}' 的交互项",
                     step);
-                RaiseStatusChanged("监控中 - 等待 'Yes, allow this time' 出现");
+                RaiseStatusChanged($"监控中 - 等待 '{targetText}' 出现");
                 continue;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -460,7 +467,7 @@ public sealed class ElectronAutomationService : IElectronAutomationService
             {
                 // 可能是 CDP 连接断开（Antigravity 重启、崩溃等），尝试断线重连。
                 _loggingService.LogWarning(
-                    $"等待 'allow this time' 时 Playwright 异常，可能 CDP 连接断开。异常信息：{ex.Message}",
+                    $"等待 '{targetText}' 时 Playwright 异常，可能 CDP 连接断开。异常信息：{ex.Message}",
                     step);
                 var reconnected = await TryReconnectAsync(cancellationToken, step);
                 if (!reconnected)
@@ -476,7 +483,7 @@ public sealed class ElectronAutomationService : IElectronAutomationService
             {
                 // 其他非预期异常不中断监控循环，记 WARN 后短暂退避继续等待。
                 _loggingService.LogWarning(
-                    $"等待 'allow this time' 时发生非预期异常，将退避后继续等待。异常信息：{ex.Message}",
+                    $"等待 '{targetText}' 时发生非预期异常，将退避后继续等待。异常信息：{ex.Message}",
                     step);
                 try
                 {
@@ -494,7 +501,7 @@ public sealed class ElectronAutomationService : IElectronAutomationService
                 _confirmationCount++;
                 idleLogCounter = 0; // 检测到交互项，重置空闲计数器。
                 _loggingService.LogInfo(
-                    $"✓ [第{_confirmationCount}次确认] 检测到 'Yes, allow this time' 交互行出现",
+                    $"✓ [第{_confirmationCount}次确认] 检测到包含 '{targetText}' 的交互行出现",
                     step);
                 RaiseStatisticsChanged();
 
@@ -502,7 +509,7 @@ public sealed class ElectronAutomationService : IElectronAutomationService
                 {
                     // 调用 FindAndClickAllowThisTimeAsync 点击交互行（含 shadowRoot 兜底搜索），
                     // 再按 Enter 键确认（双保险：点击选中 + Enter 提交）。
-                    var (found, clicked) = await FindAndClickAllowThisTimeAsync(page);
+                    var (found, clicked) = await FindAndClickAllowThisTimeAsync(page, targetText);
                     if (clicked)
                     {
                         _loggingService.LogInfo("  已点击选中交互行", step);
@@ -671,35 +678,47 @@ public sealed class ElectronAutomationService : IElectronAutomationService
     }
 
     /// <summary>
-    /// 在指定页面 DOM 中搜索 "allow this time" 文本节点，找到后向上查找可点击的
+    /// 在指定页面 DOM 中搜索 targetText 文本节点（忽略大小写），找到后向上查找可点击的
     /// 交互行元素（monaco-list-row / action-item / quick-input-list-entry 等）并点击选中。
     /// 使用 TreeWalker 遍历所有文本节点，并递归进入 shadowRoot 覆盖 Web 组件场景。
     /// </summary>
     /// <param name="page">待搜索的页面。</param>
+    /// <param name="targetText">待匹配的交互文本（不区分大小写）。</param>
     /// <returns>(found: 是否找到文本, clicked: 是否成功点击交互行)。</returns>
-    private async Task<(bool found, bool clicked)> FindAndClickAllowThisTimeAsync(IPage page)
+    private async Task<(bool found, bool clicked)> FindAndClickAllowThisTimeAsync(IPage page, string targetText)
     {
-        var result = await page.EvaluateAsync<string>("(function(){" +
-            "var r={found:false,clicked:false,info:''};" +
-            "function search(root){" +
-              "if(!root)return;" +
-              "var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null);" +
-              "while(w.nextNode()){var t=w.currentNode.textContent;" +
-                "if(t&&t.match(/allow this time/i)){" +
-                  "r.found=true;r.info=t.trim().substring(0,60);" +
-                  "var el=w.currentNode.parentElement;" +
-                  // 向上查找可点击的交互行元素（VS Code/Monaco 常见列表行容器）
-                  "var clickable=el;" +
-                  "var sel='.monaco-list-row,.action-item,.quick-input-list-entry,.quick-input-row,.list-row,button,[role=button],.quick-input-list .monaco-list-row';" +
-                  "while(clickable&&clickable!==document.body){if(clickable.matches&&clickable.matches(sel)){break;}clickable=clickable.parentElement;}" +
-                  "if(!clickable||clickable===document.body){clickable=el;}" +
-                  "try{clickable.click();r.clicked=true;}catch(e){r.clicked=false;}" +
-                  "return;}}" +
+        var result = await page.EvaluateAsync<string>("(target) => {" +
+            "var lower = (target || '').toLowerCase();" +
+            "var r = { found: false, clicked: false, info: '' };" +
+            "function search(root) {" +
+              "if (!root) return;" +
+              "var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);" +
+              "while (w.nextNode()) {" +
+                "var t = w.currentNode.textContent;" +
+                "if (t && t.toLowerCase().includes(lower)) {" +
+                  "r.found = true;" +
+                  "r.info = t.trim().substring(0, 60);" +
+                  "var el = w.currentNode.parentElement;" +
+                  "var clickable = el;" +
+                  "var sel = '.monaco-list-row,.action-item,.quick-input-list-entry,.quick-input-row,.list-row,button,[role=button],.quick-input-list .monaco-list-row';" +
+                  "while (clickable && clickable !== document.body) {" +
+                    "if (clickable.matches && clickable.matches(sel)) { break; }" +
+                    "clickable = clickable.parentElement;" +
+                  "}" +
+                  "if (!clickable || clickable === document.body) { clickable = el; }" +
+                  "try { clickable.click(); r.clicked = true; } catch(e) { r.clicked = false; }" +
+                  "return;" +
+                "}" +
+              "}" +
             "}" +
             "search(document.body);" +
-            "if(!r.found){document.querySelectorAll('*').forEach(function(el){if(el.shadowRoot&&!r.found)search(el.shadowRoot);});}" +
+            "if (!r.found) {" +
+              "document.querySelectorAll('*').forEach(function(el) {" +
+                "if (el.shadowRoot && !r.found) search(el.shadowRoot);" +
+              "});" +
+            "}" +
             "return JSON.stringify(r);" +
-        "})()");
+        "}", targetText);
 
         var found = result.Contains("\"found\":true");
         var clicked = result.Contains("\"clicked\":true");

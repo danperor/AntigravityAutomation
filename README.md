@@ -99,9 +99,9 @@ dotnet run --project src/AntigravityAutomation/AntigravityAutomation.csproj
 ```
 
 1. **开始监控**：点击 **`● 开始监控`** 按钮，工具将自动查找已运行的 Antigravity 调试端口并建立连接。
-2. **自动确认**：当 Antigravity 中提出操作需要确认时，工具将在毫秒级检测到并自动触发确认，同时界面上的“确认次数”累加。
-3. **停止监控**：点击 **`■ 停止`** 可随时安全退出监控守护。
-4. **高级设置**：展开“高级设置”可配置 Antigravity 可执行文件路径，并支持一键保存至配置文件。
+2. **自动确认**：当 Antigravity 界面出现匹配指定文字的交互提示时，工具将在毫秒级检测到并自动按 Enter 触发确认，同时“确认次数”实时累加。
+3. **自定义交互文字**：展开**“▸ 高级设置”**，可在**“交互文字”**中自定义输入想要自动确认的文本（不区分大小写，默认值为 `Yes, allow this time`）。点击“保存配置”即可永久保存到本地配置文件。
+4. **停止监控**：点击 **`■ 停止`** 可随时安全退出监控守护。
 
 ---
 
@@ -113,10 +113,7 @@ dotnet run --project src/AntigravityAutomation/AntigravityAutomation.csproj
 {
   "AutomationConfig": {
     "AppExecutablePath": "C:\\Users\\<用户名>\\AppData\\Local\\Programs\\antigravity\\Antigravity.exe",
-    "YesAllowButtonText": "yes, allow this time",
-    "SubmitButtonText": "submit",
-    "OperationTimeoutSeconds": 30,
-    "StartupDelaySeconds": 5
+    "YesAllowButtonText": "Yes, allow this time"
   },
   "Serilog": {
     "MinimumLevel": "Debug"
@@ -124,9 +121,9 @@ dotnet run --project src/AntigravityAutomation/AntigravityAutomation.csproj
 }
 ```
 
-- `YesAllowButtonText`：需要匹配的权限确认关键词（不区分大小写）。
-- `OperationTimeoutSeconds`：操作单次等待超时阈值（秒）。
-- `StartupDelaySeconds`：启动缓冲延时。
+- `AppExecutablePath`：Antigravity IDE 安装路径。
+- `YesAllowButtonText`：需要自动确认的交互行目标文本（匹配时忽略大小写，默认 `Yes, allow this time`，支持用户任意自定义）。
+- `Serilog`：日志记录级别与输出配置。
 
 ---
 

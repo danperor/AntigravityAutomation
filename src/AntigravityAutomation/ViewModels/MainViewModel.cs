@@ -64,64 +64,14 @@ public sealed class MainViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _appExecutablePath, value);
     }
 
-    private string _targetButtonText = string.Empty;
+    private string _yesAllowButtonText = "Yes, allow this time";
     /// <summary>
-    /// 目标按钮的显示文字。留空表示进入探索模式，仅枚举按钮不执行点击。
-    /// </summary>
-    public string TargetButtonText
-    {
-        get => _targetButtonText;
-        set => this.RaiseAndSetIfChanged(ref _targetButtonText, value);
-    }
-
-    private string _targetButtonSelector = string.Empty;
-    /// <summary>
-    /// 目标按钮的 CSS 选择器。优先级高于文字匹配。
-    /// </summary>
-    public string TargetButtonSelector
-    {
-        get => _targetButtonSelector;
-        set => this.RaiseAndSetIfChanged(ref _targetButtonSelector, value);
-    }
-
-    private string _yesAllowButtonText = "yes, allow this time";
-    /// <summary>
-    /// "yes, allow this time" 交互消息按钮的显示文字。
+    /// 目标交互行文本（不区分大小写）。当界面出现包含此文本时自动发送 Enter 确认。
     /// </summary>
     public string YesAllowButtonText
     {
         get => _yesAllowButtonText;
         set => this.RaiseAndSetIfChanged(ref _yesAllowButtonText, value);
-    }
-
-    private string _submitButtonText = "submit";
-    /// <summary>
-    /// submit 提交按钮的显示文字。
-    /// </summary>
-    public string SubmitButtonText
-    {
-        get => _submitButtonText;
-        set => this.RaiseAndSetIfChanged(ref _submitButtonText, value);
-    }
-
-    private int _operationTimeoutSeconds = 30;
-    /// <summary>
-    /// 单步操作超时秒数。
-    /// </summary>
-    public int OperationTimeoutSeconds
-    {
-        get => _operationTimeoutSeconds;
-        set => this.RaiseAndSetIfChanged(ref _operationTimeoutSeconds, value);
-    }
-
-    private int _startupDelaySeconds = 5;
-    /// <summary>
-    /// 应用启动后等待秒数。
-    /// </summary>
-    public int StartupDelaySeconds
-    {
-        get => _startupDelaySeconds;
-        set => this.RaiseAndSetIfChanged(ref _startupDelaySeconds, value);
     }
 
     // ───────────────────────── 状态属性 ─────────────────────────
@@ -246,6 +196,9 @@ public sealed class MainViewModel : ReactiveObject
 
         // 订阅自动化服务统计变化：同步确认次数/CDP端口/连接状态到界面绑定属性。
         _electronAutomationService.StatisticsChanged += OnAutomationStatisticsChanged;
+
+        // 尝试从 appsettings.json 加载持久化配置
+        LoadConfig();
     }
 
     // ───────────────────────── 命令实现 ─────────────────────────
@@ -309,8 +262,12 @@ public sealed class MainViewModel : ReactiveObject
         RecreateCancellationTokenSource();
 
         var config = BuildConfigFromUi();
+        var targetText = string.IsNullOrWhiteSpace(config.YesAllowButtonText)
+            ? "Yes, allow this time"
+            : config.YesAllowButtonText.Trim();
+
         _loggingService.LogInfo(
-            "开始持续监控 'Yes, allow this time' 交互项，将自动按 Enter 确认...",
+            $"开始持续监控包含 '{targetText}' 的交互项，将自动按 Enter 确认...",
             "执行自动化");
 
         try
@@ -387,7 +344,11 @@ public sealed class MainViewModel : ReactiveObject
             var config = BuildConfigFromUi();
             var configPayload = new
             {
-                AutomationConfig = config,
+                AutomationConfig = new
+                {
+                    AppExecutablePath = config.AppExecutablePath,
+                    YesAllowButtonText = config.YesAllowButtonText
+                },
                 // 保留原 Serilog 配置段，避免覆盖日志设置。
                 Serilog = new
                 {
@@ -443,7 +404,41 @@ public sealed class MainViewModel : ReactiveObject
     // ───────────────────────── 辅助方法 ─────────────────────────
 
     /// <summary>
-    /// 从界面属性构建 AutomationConfig 实例。空字符串统一转为 null 以符合模型语义。
+    /// 从 appsettings.json 加载持久化配置并回填到 ViewModel 属性。
+    /// </summary>
+    private void LoadConfig()
+    {
+        try
+        {
+            if (!File.Exists(ConfigFileName))
+            {
+                return;
+            }
+
+            var json = File.ReadAllText(ConfigFileName);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("AutomationConfig", out var autoConfig))
+            {
+                if (autoConfig.TryGetProperty("AppExecutablePath", out var pathElem) &&
+                    pathElem.GetString() is { } path && !string.IsNullOrWhiteSpace(path))
+                {
+                    _appExecutablePath = path;
+                }
+                if (autoConfig.TryGetProperty("YesAllowButtonText", out var textElem) &&
+                    textElem.GetString() is { } text && !string.IsNullOrWhiteSpace(text))
+                {
+                    _yesAllowButtonText = text;
+                }
+            }
+        }
+        catch
+        {
+            // 配置文件读取失败时保留默认值
+        }
+    }
+
+    /// <summary>
+    /// 从界面属性构建 AutomationConfig 实例。空字符串统一回退为默认提示词。
     /// </summary>
     /// <returns>填充界面当前值的 AutomationConfig 实例。</returns>
     private AutomationConfig BuildConfigFromUi()
@@ -451,12 +446,9 @@ public sealed class MainViewModel : ReactiveObject
         return new AutomationConfig
         {
             AppExecutablePath = AppExecutablePath,
-            TargetButtonText = string.IsNullOrWhiteSpace(TargetButtonText) ? null : TargetButtonText,
-            TargetButtonSelector = string.IsNullOrWhiteSpace(TargetButtonSelector) ? null : TargetButtonSelector,
-            YesAllowButtonText = YesAllowButtonText,
-            SubmitButtonText = SubmitButtonText,
-            OperationTimeoutSeconds = OperationTimeoutSeconds,
-            StartupDelaySeconds = StartupDelaySeconds
+            YesAllowButtonText = string.IsNullOrWhiteSpace(YesAllowButtonText)
+                ? "Yes, allow this time"
+                : YesAllowButtonText.Trim()
         };
     }
 

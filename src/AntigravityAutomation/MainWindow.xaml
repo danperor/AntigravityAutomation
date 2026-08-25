@@ -264,7 +264,7 @@
                             MinWidth="160"
                             Margin="0,0,10,0"
                             Command="{Binding RunAutomationCommand}"
-                            ToolTip="持续监控 'Yes, allow this time' 交互项并自动按 Enter 确认" />
+                            ToolTip="持续监控匹配的交互项并自动按 Enter 确认" />
                     <Button x:Name="StopButton"
                             Content="■ 停止"
                             Style="{StaticResource StopButtonStyle}"
@@ -364,6 +364,10 @@
                           Margin="0,4,0,0"
                           Padding="0">
                     <Grid Margin="0,8,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -371,29 +375,44 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0"
+                        <!-- 第 0 行：目标交互行文字（不区分大小写） -->
+                        <TextBlock Grid.Row="0" Grid.Column="0"
+                                   Text="交互文字："
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,6" />
+                        <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
+                                 x:Name="InteractiveTextTextBox"
+                                 Style="{StaticResource DarkTextBoxStyle}"
+                                 Text="{Binding YesAllowButtonText, UpdateSourceTrigger=PropertyChanged}"
+                                 Margin="0,0,8,6"
+                                 ToolTip="匹配的交互行文本（不区分大小写，默认：Yes, allow this time）" />
+                        <Button Grid.Row="0" Grid.Column="3"
+                                Content="保存配置"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Margin="0,0,0,6"
+                                Command="{Binding SaveConfigCommand}"
+                                ToolTip="将当前配置保存到 appsettings.json" />
+
+                        <!-- 第 1 行：应用路径 -->
+                        <TextBlock Grid.Row="1" Grid.Column="0"
                                    Text="应用路径："
                                    Foreground="{StaticResource MutedTextBrush}"
                                    VerticalAlignment="Center"
                                    Margin="0,0,8,0" />
-                        <TextBox Grid.Column="1"
+                        <TextBox Grid.Row="1" Grid.Column="1"
                                  x:Name="AppPathTextBox"
                                  Style="{StaticResource DarkTextBoxStyle}"
                                  Text="{Binding AppExecutablePath, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,0,8,0"
                                  ToolTip="Antigravity IDE 可执行文件绝对路径" />
-                        <Button Grid.Column="2"
+                        <Button Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
                                 x:Name="BrowseButton"
                                 Content="浏览..."
                                 Style="{StaticResource SecondaryButtonStyle}"
-                                Margin="0,0,8,0"
+                                Margin="0,0,0,0"
                                 Click="BrowseButton_Click"
                                 ToolTip="选择 Antigravity 可执行文件" />
-                        <Button Grid.Column="3"
-                                Content="保存配置"
-                                Style="{StaticResource SecondaryButtonStyle}"
-                                Command="{Binding SaveConfigCommand}"
-                                ToolTip="将当前配置保存到 appsettings.json" />
                     </Grid>
                 </Expander>
             </StackPanel>
