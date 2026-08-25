@@ -1,0 +1,14 @@
+<!--文件用途：WPF 应用程序资源定义。
+    注意：入口点由 Program.cs 提供（通过 csproj 的 <StartupObject> 指定）。
+    已移除 StartupUri：改为在 App.xaml.cs 的 OnStartup 中手动创建主窗口，
+    以便通过依赖注入容器构建 MainViewModel 并注入到 MainWindow。-->
+<Application x:Class="AntigravityAutomation.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Startup="OnStartup"
+             Exit="OnExit"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <!-- 应用级资源字典：后续可在此合并样式、画刷、数据模板等共享资源 -->
+    </Application.Resources>
+</Application>

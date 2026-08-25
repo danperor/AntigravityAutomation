@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    文件用途：AntigravityAutomation WPF .NET 8 项目文件。
+    定义项目元数据、目标框架、NuGet 依赖、Playwright 平台配置与入口点设置。
+    本项目用于自动化操作 Google Antigravity IDE（Electron 应用），
+    使用 Playwright for .NET 的 Electron 模式启动并自动化该 IDE。
+  -->
+
+  <PropertyGroup>
+    <!-- 输出类型为 Windows 可执行（WPF 桌面应用，不弹出控制台窗口） -->
+    <OutputType>WinExe</OutputType>
+    <!-- 目标框架：.NET 8，Windows 平台（WPF 需要 Windows TFM）。
+         显式指定 Windows 10 SDK 10.0.17763 以满足 ReactiveUI.WPF 的最低平台要求。 -->
+    <TargetFramework>net8.0-windows10.0.17763</TargetFramework>
+    <!-- 启用可空引用类型，增强空安全 -->
+    <Nullable>enable</Nullable>
+    <!-- 启用隐式 using，减少样板 using 语句 -->
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 启用 WPF 支持 -->
+    <UseWPF>true</UseWPF>
+    <!-- 使用最新 C# 语言版本 -->
+    <LangVersion>latest</LangVersion>
+    <!-- 程序集信息 -->
+    <AssemblyName>AntigravityAutomation</AssemblyName>
+    <RootNamespace>AntigravityAutomation</RootNamespace>
+    <!-- 应用程序版本信息 -->
+    <Version>1.0.0</Version>
+    <Company>Autoprocess</Company>
+    <Product>AntigravityAutomation</Product>
+    <!-- 禁用 SDK 自动生成 AssemblyInfo：WPF 临时项目（_wpftmp）在编译 XAML 时会
+         生成自己的 AssemblyInfo 并同时引用主项目的 AssemblyAttributes，导致
+         TargetFrameworkAttribute 等特性重复（CS0579）。设为 false 后仅 WPF 临时
+         项目生成 AssemblyInfo，主项目不再生成，避免重复。 -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- 指定启动对象为自定义 Program 类（用于处理 Playwright CLI 命令与 WPF 启动）。
+         WPF SDK 会自动生成 App.Main，Playwright 会生成 Microsoft.Playwright.Program.Main，
+         此处显式指定入口点避免多 Main 歧义。 -->
+    <StartupObject>AntigravityAutomation.Program</StartupObject>
+    <!-- Playwright 目标平台：Windows x64 -->
+    <PlaywrightPlatform>win32_x64</PlaywrightPlatform>
+    <!-- 将 appsettings.json 复制到输出目录 -->
+    <ContentFilesIncludeFromProject>appsettings.json</ContentFilesIncludeFromProject>
+  </PropertyGroup>
+
+  <!-- NuGet 包依赖 -->
+  <ItemGroup>
+    <!-- Playwright for .NET：用于 Electron 自动化（启动并控制 Antigravity IDE） -->
+    <PackageReference Include="Microsoft.Playwright" Version="1.49.0" />
+    <!-- ReactiveUI：响应式 UI 框架，用于 ViewModel 与视图绑定 -->
+    <PackageReference Include="ReactiveUI" Version="20.1.1" />
+    <!-- ReactiveUI.WPF：ReactiveUI 的 WPF 平台支持 -->
+    <PackageReference Include="ReactiveUI.WPF" Version="20.1.1" />
+    <!-- Serilog：结构化日志核心库 -->
+    <PackageReference Include="Serilog" Version="4.2.0" />
+    <!-- Serilog.Sinks.File：日志文件输出 Sink -->
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <!-- Serilog.Sinks.Async：异步日志 Sink，避免日志阻塞主流程 -->
+    <PackageReference Include="Serilog.Sinks.Async" Version="2.0.0" />
+    <!-- Microsoft.Extensions.Hosting：通用主机模型，用于依赖注入与生命周期管理 -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <!-- Microsoft.Extensions.DependencyInjection：依赖注入容器 -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <!-- Microsoft.Extensions.Configuration：配置抽象基础 -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+    <!-- Microsoft.Extensions.Configuration.Json：JSON 配置文件提供程序 -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
+    <!-- CommunityToolkit.Mvvm：MVVM 源生成器辅助库（ObservableProperty/RelayCommand 等） -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+  </ItemGroup>
+
+  <!-- 将 appsettings.json 复制到输出目录，运行时读取默认配置 -->
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- 排除临时探针项目与探针文件参与主项目编译：
+       _ReflectProbe\ 是另一工程师创建的独立 Playwright API 验证探针项目（有自己的 csproj），
+       Services\_Probe.cs 是同目的的临时探针文件（注释标注"验证后删除"）。
+       二者均不应被主项目编译，否则其 Playwright Electron API 引用会导致主项目编译失败。
+       探针项目可继续通过 dotnet build _ReflectProbe\_ReflectProbe.csproj 独立构建。 -->
+  <ItemGroup>
+    <Compile Remove="_ReflectProbe\**" />
+    <Compile Remove="Services\_Probe.cs" />
+  </ItemGroup>
+
+</Project>

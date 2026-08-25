@@ -1,0 +1,35 @@
+## Build Results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio & IDE files
+.vs/
+.vscode/
+.idea/
+*.user
+*.userprefs
+*.suo
+*.userosscache
+*.sln.docstates
+
+## CodeArts & Tool metadata
+.arts/
+.codeartsdoer/
+.codegraph/
+
+## Windows generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
