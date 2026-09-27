@@ -274,14 +274,14 @@
                             MinWidth="100"
                             Command="{Binding StopCommand}"
                             ToolTip="停止当前正在执行的监控" />
-                    <!-- ⏱️ Claude 终端定时调度器入口按钮 -->
+                    <!-- ⏱️ CLI 工具终端定时调度器入口按钮 -->
                     <Button x:Name="OpenClaudeSchedulerButton"
-                            Content="⏱️ Claude 终端定时"
+                            Content="⏱️ CLI 终端定时"
                             Style="{StaticResource SecondaryButtonStyle}"
                             MinWidth="150"
                             Margin="10,0,0,0"
                             Click="OpenClaudeSchedulerButton_Click"
-                            ToolTip="打开独立配置弹窗：在指定时间或倒计时后自动向运行 Claude 的终端注入指令并按回车" />
+                            ToolTip="打开独立配置弹窗：在指定时间或倒计时后自动向运行中的 Claude / Kimi Code 终端注入指令并按回车" />
                 </StackPanel>
 
                 <!-- 统计信息行 -->

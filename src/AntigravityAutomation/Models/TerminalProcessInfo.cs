@@ -62,8 +62,8 @@ public sealed class TerminalProcessInfo
         {
             var badge = DetectedCliType switch
             {
-                TargetCliType.Claude => " ★[已识别为 Claude]",
-                TargetCliType.KimiCode => " ★[已识别为 Kimi Code]",
+                TargetCliType.Claude => " ★[Claude]",
+                TargetCliType.KimiCode => " ★[Kimi Code]",
                 _ => ""
             };
 

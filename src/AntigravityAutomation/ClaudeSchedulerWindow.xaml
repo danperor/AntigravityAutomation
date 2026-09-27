@@ -5,9 +5,9 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:AntigravityAutomation.ViewModels"
         mc:Ignorable="d"
-        Title="Claude 终端定时指令调度器"
-        Height="620" Width="560"
-        MinHeight="520" MinWidth="500"
+        Title="CLI 工具终端定时调度器"
+        Height="650" Width="580"
+        MinHeight="560" MinWidth="520"
         WindowStartupLocation="CenterOwner"
         Background="#181825"
         Foreground="#F0F0F0"
@@ -513,7 +513,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="⏱️ AI 终端定时指令调度器 (Claude / Kimi Code)"
+                    <TextBlock Text="⏱️ CLI 终端定时指令调度器 (Claude / Kimi Code)"
                                FontSize="15" FontWeight="Bold" Foreground="#FFFFFF" />
                     <TextBlock Text="精准绑定 Claude 或 Kimi Code 终端，在套餐额度重置时自动唤醒并注入指令"
                                FontSize="11.5" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
@@ -528,8 +528,8 @@
         </Border>
 
         <!-- ════════════════ 主配置滚动面板 ════════════════ -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,4,0">
-            <StackPanel Orientation="Vertical">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+            <StackPanel Orientation="Vertical" IsEnabled="{Binding IsNotRunning}">
 
                 <!-- 1. 目标终端选择 -->
                 <Border Style="{StaticResource SectionCardStyle}">
@@ -635,17 +635,24 @@
                                 <TextBlock Text=" 分 准时执行" VerticalAlignment="Center" Margin="3,0" Foreground="{StaticResource MutedTextBrush}" />
                             </StackPanel>
                         </RadioButton>
+
+                        <!-- 定点时刻动态预估提示 -->
+                        <TextBlock Text="{Binding SpecificTimePreview}"
+                                   Foreground="{StaticResource AccentGreenBrush}"
+                                   FontSize="11"
+                                   Margin="26,4,0,4"
+                                   Visibility="{Binding IsSpecificTimeMode, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
                 </Border>
 
                 <!-- 3. 发送指令与执行选项 -->
-                <Border Style="{StaticResource SectionCardStyle}">
+                <Border Style="{StaticResource SectionCardStyle}" Margin="0,0,0,4">
                     <StackPanel>
                         <TextBlock Text="3. 注入指令内容"
                                    FontWeight="SemiBold" FontSize="13" Foreground="#FFFFFF" Margin="0,0,0,8" />
                         <TextBox Text="{Binding CommandText, UpdateSourceTrigger=PropertyChanged}"
                                  Height="36" VerticalContentAlignment="Center" Margin="0,0,0,10"
-                                 ToolTip="到达定时时间后将自动输入到 Claude 终端中的指令内容" />
+                                 ToolTip="到达定时时间后将自动输入到目标终端中的指令内容" />
 
                         <CheckBox IsChecked="{Binding AutoPressEnter}"
                                   Content="发送完成后自动按回车键 (Enter) 提交"
@@ -653,7 +660,7 @@
 
                         <CheckBox IsChecked="{Binding MinimizeToTray}"
                                   Content="启动定时后自动将主工具隐藏至右下角系统托盘 (纯后台运行)"
-                                  Margin="0,0,0,2" />
+                                  Margin="0,0,0,4" />
                     </StackPanel>
                 </Border>
 

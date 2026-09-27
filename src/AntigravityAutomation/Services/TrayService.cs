@@ -121,8 +121,9 @@ public sealed class TrayService : ITrayService
 
         if (_schedulerService.IsRunning)
         {
+            var toolName = _schedulerService.ActiveConfig?.TargetCliDisplayName ?? "CLI";
             var remain = _schedulerService.RemainingTime;
-            ShowNotification("已转入后台运行", $"Claude 定时任务正在执行中 (剩余: {remain:hh\\:mm\\:ss})");
+            ShowNotification("已转入后台运行", $"{toolName} 定时任务正在执行中 (剩余: {remain:hh\\:mm\\:ss})");
         }
     }
 
@@ -221,7 +222,7 @@ public sealed class TrayService : ITrayService
         itemRestore.Click += (_, _) => RestoreFromTray();
         menu.Items.Add(itemRestore);
 
-        var itemClaude = new MenuItem { Header = "⏱️ 打开 Claude 定时调度器" };
+        var itemClaude = new MenuItem { Header = "⏱️ 打开 CLI 终端定时调度器" };
         itemClaude.Click += (_, _) =>
         {
             RestoreFromTray();
@@ -232,9 +233,10 @@ public sealed class TrayService : ITrayService
         var itemCancel = new MenuItem { Header = "⏹️ 取消当前定时任务" };
         itemCancel.Click += (_, _) =>
         {
+            var toolName = _schedulerService.ActiveConfig?.TargetCliDisplayName ?? "CLI";
             _schedulerService.CancelSchedule();
             UpdateTooltip("Antigravity 自动确认工具 - 就绪");
-            ShowNotification("已取消定时", "Claude 终端定时任务已中止。");
+            ShowNotification("已取消定时", $"{toolName} 终端定时任务已中止。");
         };
         menu.Items.Add(itemCancel);
 
@@ -254,8 +256,9 @@ public sealed class TrayService : ITrayService
     {
         System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
         {
+            var toolName = _schedulerService.ActiveConfig?.TargetCliDisplayName ?? "CLI";
             var tip = _schedulerService.IsRunning
-                ? $"Claude 定时中: 剩余 {remaining:hh\\:mm\\:ss} (目标: PID {_schedulerService.ActiveConfig?.TargetProcessId})"
+                ? $"{toolName} 定时中: 剩余 {remaining:hh\\:mm\\:ss} (PID: {_schedulerService.ActiveConfig?.TargetProcessId})"
                 : "Antigravity 自动确认工具 - 就绪";
             UpdateTooltip(tip);
         });

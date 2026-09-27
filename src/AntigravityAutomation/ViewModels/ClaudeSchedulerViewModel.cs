@@ -25,9 +25,10 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
     private int _countdownHours = 5;
     private int _countdownMinutes = 0;
     private int _countdownSeconds = 0;
-    private DateTime _specificDate = DateTime.Today;
-    private int _specificHour = (DateTime.Now.Hour + 5) % 24;
-    private int _specificMinute = DateTime.Now.Minute;
+    private static DateTime GetDefaultTargetTime() => DateTime.Now.AddHours(5);
+    private DateTime _specificDate = GetDefaultTargetTime().Date;
+    private int _specificHour = GetDefaultTargetTime().Hour;
+    private int _specificMinute = GetDefaultTargetTime().Minute;
     private string _commandText = "继续";
     private bool _autoPressEnter = true;
     private bool _minimizeToTray = true;
@@ -87,11 +88,13 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
         get => _isCountdownMode;
         set
         {
+            if (_isCountdownMode == value) return;
             this.RaiseAndSetIfChanged(ref _isCountdownMode, value);
-            if (value)
+            if (value && _isSpecificTimeMode)
             {
                 IsSpecificTimeMode = false;
             }
+            UpdateStaticRemainingTimeIfIdle();
         }
     }
 
@@ -100,10 +103,15 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
         get => _isSpecificTimeMode;
         set
         {
+            if (_isSpecificTimeMode == value) return;
             this.RaiseAndSetIfChanged(ref _isSpecificTimeMode, value);
             if (value)
             {
-                IsCountdownMode = false;
+                if (_isCountdownMode)
+                {
+                    IsCountdownMode = false;
+                }
+                this.RaisePropertyChanged(nameof(SpecificTimePreview));
             }
         }
     }
@@ -111,37 +119,87 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
     public int CountdownHours
     {
         get => _countdownHours;
-        set => this.RaiseAndSetIfChanged(ref _countdownHours, Math.Max(0, value));
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _countdownHours, Math.Max(0, value));
+            UpdateStaticRemainingTimeIfIdle();
+        }
     }
 
     public int CountdownMinutes
     {
         get => _countdownMinutes;
-        set => this.RaiseAndSetIfChanged(ref _countdownMinutes, Math.Clamp(value, 0, 59));
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _countdownMinutes, Math.Clamp(value, 0, 59));
+            UpdateStaticRemainingTimeIfIdle();
+        }
     }
 
     public int CountdownSeconds
     {
         get => _countdownSeconds;
-        set => this.RaiseAndSetIfChanged(ref _countdownSeconds, Math.Clamp(value, 0, 59));
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _countdownSeconds, Math.Clamp(value, 0, 59));
+            UpdateStaticRemainingTimeIfIdle();
+        }
+    }
+
+    private void UpdateStaticRemainingTimeIfIdle()
+    {
+        if (!IsRunning && IsCountdownMode)
+        {
+            RemainingTimeString = $"{CountdownHours:D2}:{CountdownMinutes:D2}:{CountdownSeconds:D2}";
+        }
     }
 
     public DateTime SpecificDate
     {
         get => _specificDate;
-        set => this.RaiseAndSetIfChanged(ref _specificDate, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _specificDate, value);
+            this.RaisePropertyChanged(nameof(SpecificTimePreview));
+        }
     }
 
     public int SpecificHour
     {
         get => _specificHour;
-        set => this.RaiseAndSetIfChanged(ref _specificHour, Math.Clamp(value, 0, 23));
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _specificHour, Math.Clamp(value, 0, 23));
+            this.RaisePropertyChanged(nameof(SpecificTimePreview));
+        }
     }
 
     public int SpecificMinute
     {
         get => _specificMinute;
-        set => this.RaiseAndSetIfChanged(ref _specificMinute, Math.Clamp(value, 0, 59));
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _specificMinute, Math.Clamp(value, 0, 59));
+            this.RaisePropertyChanged(nameof(SpecificTimePreview));
+        }
+    }
+
+    /// <summary>
+    /// 定点时刻模式的动态预估说明。
+    /// </summary>
+    public string SpecificTimePreview
+    {
+        get
+        {
+            var target = new DateTime(SpecificDate.Year, SpecificDate.Month, SpecificDate.Day, SpecificHour, SpecificMinute, 0);
+            if (target <= DateTime.Now)
+            {
+                target = target.AddDays(1);
+            }
+            var span = target - DateTime.Now;
+            var days = span.Days > 0 ? $"{span.Days} 天 " : "";
+            return $"预计将在 {days}{span.Hours} 小时 {span.Minutes} 分钟后执行 (目标时刻: {target:yyyy-MM-dd HH:mm})";
+        }
     }
 
     public string CommandText
@@ -165,8 +223,14 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
     public bool IsRunning
     {
         get => _isRunning;
-        private set => this.RaiseAndSetIfChanged(ref _isRunning, value);
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref _isRunning, value);
+            this.RaisePropertyChanged(nameof(IsNotRunning));
+        }
     }
+
+    public bool IsNotRunning => !IsRunning;
 
     public string RemainingTimeString
     {
@@ -233,8 +297,13 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
             }
         });
 
-        StartScheduleCommand = ReactiveCommand.Create(StartSchedule);
-        CancelScheduleCommand = ReactiveCommand.Create(CancelSchedule);
+        StartScheduleCommand = ReactiveCommand.Create(
+            StartSchedule,
+            this.WhenAnyValue(x => x.IsRunning, running => !running));
+
+        CancelScheduleCommand = ReactiveCommand.Create(
+            CancelSchedule,
+            this.WhenAnyValue(x => x.IsRunning));
 
         // 初始刷新终端列表
         RefreshTerminals();
