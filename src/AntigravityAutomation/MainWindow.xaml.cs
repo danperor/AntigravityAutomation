@@ -8,8 +8,10 @@
 //      已移除探索结果 DataGrid 双击事件（探索功能已从精简界面中移除）。
 
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using AntigravityAutomation.Services;
 using AntigravityAutomation.ViewModels;
 using Microsoft.Win32;
 
@@ -21,6 +23,10 @@ namespace AntigravityAutomation;
 public partial class MainWindow : Window
 {
     private MainViewModel? _viewModel;
+    private readonly ITrayService? _trayService;
+    private readonly ClaudeSchedulerViewModel? _claudeSchedulerViewModel;
+    private readonly IClaudeSchedulerService? _claudeSchedulerService;
+    private ClaudeSchedulerWindow? _claudeWindow;
 
     /// <summary>
     /// 无参构造函数。供 XAML 设计器与单元测试使用；运行时优先使用带 ViewModel 的构造函数。
@@ -31,12 +37,31 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 带 ViewModel 的构造函数。设置 DataContext 并挂载日志自动滚动处理。
+    /// 兼容旧版单一 ViewModel 的构造函数。
     /// </summary>
-    /// <param name="viewModel">由 DI 容器构建的主视图模型。</param>
     public MainWindow(MainViewModel viewModel) : this()
     {
         InitializeViewModel(viewModel);
+    }
+
+    /// <summary>
+    /// 完整依赖注入构造函数。
+    /// </summary>
+    public MainWindow(
+        MainViewModel viewModel,
+        ITrayService trayService,
+        ClaudeSchedulerViewModel claudeSchedulerViewModel,
+        IClaudeSchedulerService claudeSchedulerService) : this()
+    {
+        _trayService = trayService;
+        _claudeSchedulerViewModel = claudeSchedulerViewModel;
+        _claudeSchedulerService = claudeSchedulerService;
+        InitializeViewModel(viewModel);
+
+        Loaded += (_, _) =>
+        {
+            _trayService?.Initialize(this, OpenClaudeSchedulerWindow);
+        };
     }
 
     /// <summary>
@@ -127,5 +152,72 @@ public partial class MainWindow : Window
     private void ClearLogButton_Click(object sender, RoutedEventArgs e)
     {
         _viewModel?.LogEntries.Clear();
+    }
+
+    /// <summary>
+    /// 打开 Claude 终端定时指令调度器子窗口。
+    /// </summary>
+    public void OpenClaudeSchedulerWindow()
+    {
+        if (_claudeSchedulerViewModel == null)
+        {
+            return;
+        }
+
+        if (_claudeWindow == null || !_claudeWindow.IsLoaded)
+        {
+            _claudeSchedulerViewModel.RefreshTerminals();
+            _claudeWindow = new ClaudeSchedulerWindow(_claudeSchedulerViewModel)
+            {
+                Owner = this
+            };
+            _claudeWindow.Closed += (_, _) => _claudeWindow = null;
+            _claudeWindow.Show();
+        }
+        else
+        {
+            _claudeWindow.WindowState = WindowState.Normal;
+            _claudeWindow.Activate();
+        }
+    }
+
+    private void OpenClaudeSchedulerButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenClaudeSchedulerWindow();
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (_claudeSchedulerService != null && _claudeSchedulerService.IsRunning)
+        {
+            var result = MessageBox.Show(
+                "Claude 终端定时任务正在运行中。\n\n• 点击【是 (Yes)】：最小化到右下角系统托盘继续守护运行\n• 点击【否 (No)】：直接退出程序并终止定时任务",
+                "定时任务运行中",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                _trayService?.MinimizeToTray();
+                return;
+            }
+            else if (result == MessageBoxResult.Cancel)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+
+        base.OnClosing(e);
+    }
+
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        if (WindowState == WindowState.Minimized && _claudeSchedulerService != null && _claudeSchedulerService.IsRunning)
+        {
+            _trayService?.MinimizeToTray();
+        }
     }
 }

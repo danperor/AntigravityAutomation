@@ -20,7 +20,7 @@ namespace AntigravityAutomation;
 /// <summary>
 /// WPF 应用程序类。对应 App.xaml 的代码后台。
 /// </summary>
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     // 依赖注入容器，OnExit 时释放。
     private ServiceProvider? _serviceProvider;
@@ -49,12 +49,15 @@ public partial class App : Application
 
         // 解析主视图模型（其构造函数注入三个服务）。
         var mainViewModel = _serviceProvider.GetRequiredService<MainViewModel>();
+        var trayService = _serviceProvider.GetRequiredService<ITrayService>();
+        var claudeVm = _serviceProvider.GetRequiredService<ClaudeSchedulerViewModel>();
+        var schedulerService = _serviceProvider.GetRequiredService<IClaudeSchedulerService>();
 
         // 记入启动日志，便于确认界面层装配完成。
         _loggingService.LogInfo("Antigravity IDE 自动化工具启动完成，界面层已装配就绪");
 
         // 创建主窗口注入 ViewModel 并显示。
-        var mainWindow = new MainWindow(mainViewModel);
+        var mainWindow = new MainWindow(mainViewModel, trayService, claudeVm, schedulerService);
         MainWindow = mainWindow;
         mainWindow.Show();
     }
@@ -96,6 +99,19 @@ public partial class App : Application
 
         // Electron 自动化服务：单例，保留 StatusChanged 事件订阅的稳定性。
         services.AddSingleton<IElectronAutomationService, ElectronAutomationService>();
+
+        // 应用调试重启服务：单例，供"调试重启"按钮使用。
+        services.AddSingleton<IAppRelaunchService, AppRelaunchService>();
+
+        // 审批审计服务：单例，监控服务写入、界面启动时读取历史共用同一实例。
+        services.AddSingleton<IApprovalAuditService, ApprovalAuditService>();
+
+        // 终端探测与 Claude 定时调度服务
+        services.AddSingleton<ITerminalFinderService, TerminalFinderService>();
+        services.AddSingleton<ITerminalInjectionService, TerminalInjectionService>();
+        services.AddSingleton<IClaudeSchedulerService, ClaudeSchedulerService>();
+        services.AddSingleton<ITrayService, TrayService>();
+        services.AddSingleton<ClaudeSchedulerViewModel>();
 
         // 主视图模型：单例，整个应用生命周期共享一个 ViewModel 实例。
         services.AddSingleton<MainViewModel>();

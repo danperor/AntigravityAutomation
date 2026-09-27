@@ -1,10 +1,11 @@
 <!--文件用途：应用程序主窗口 XAML 定义（现代深色主题三区布局）。
     设计风格：VS Code / 终端风格深色主题，主背景 #1E1E2E，卡片背景 #2D2D3F，
     强调色绿色 #4CAF50（开始/成功）、红色 #E53935（停止/错误）、蓝色 #2196F3（信息）。
-    布局精简为三区：
+    布局精简为四区：
       第 0 行：顶部状态栏（状态指示灯呼吸动画 + 标题 + 状态文字）。
       第 1 行：控制面板（主操作按钮 + 统计信息 + 高级设置可折叠）。
-      第 2 行：日志面板（终端风格等宽字体 + 级别着色 + 自动滚动 + 清空按钮）。
+      第 2 行：审批历史（每次自动确认的时间/目标/请求正文，最新在前，高度受限可滚动）。
+      第 3 行：日志面板（终端风格等宽字体 + 级别着色 + 自动滚动 + 清空按钮）。
     所有交互控件通过 DataContext 绑定到 MainViewModel 的响应式属性与 ReactiveCommand。
     状态指示灯呼吸动画通过 Storyboard 控制 Ellipse 的 Opacity 循环，由 IsRunning 触发。
     按钮悬停效果通过 Style Trigger 改变 Background 实现，不依赖第三方动画库。-->
@@ -14,8 +15,8 @@
         xmlns:vm="clr-namespace:AntigravityAutomation.ViewModels"
         xmlns:models="clr-namespace:AntigravityAutomation.Models"
         Title="Antigravity 自动确认工具"
-        Height="480" Width="660"
-        MinHeight="360" MinWidth="540"
+        Height="620" Width="660"
+        MinHeight="460" MinWidth="540"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResize"
         Background="#1E1E2E"
@@ -194,7 +195,9 @@
             <RowDefinition Height="Auto" />
             <!-- 第 1 行：控制面板 -->
             <RowDefinition Height="Auto" />
-            <!-- 第 2 行：日志面板（占用剩余空间） -->
+            <!-- 第 2 行：审批历史（高度受限，超出滚动） -->
+            <RowDefinition Height="Auto" />
+            <!-- 第 3 行：日志面板（占用剩余空间） -->
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -271,6 +274,14 @@
                             MinWidth="100"
                             Command="{Binding StopCommand}"
                             ToolTip="停止当前正在执行的监控" />
+                    <!-- ⏱️ Claude 终端定时调度器入口按钮 -->
+                    <Button x:Name="OpenClaudeSchedulerButton"
+                            Content="⏱️ Claude 终端定时"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            MinWidth="150"
+                            Margin="10,0,0,0"
+                            Click="OpenClaudeSchedulerButton_Click"
+                            ToolTip="打开独立配置弹窗：在指定时间或倒计时后自动向运行 Claude 的终端注入指令并按回车" />
                 </StackPanel>
 
                 <!-- 统计信息行 -->
@@ -292,14 +303,16 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <!-- CDP 端口 -->
+                    <!-- 监控目标状态摘要（各目标名称:端口✓/等待中） -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <TextBlock Text="CDP 端口: " Foreground="{StaticResource MutedTextBrush}"
+                        <TextBlock Text="目标: " Foreground="{StaticResource MutedTextBrush}"
                                    VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding CdpPort}"
-                                   FontWeight="Bold" FontSize="15"
+                        <TextBlock Text="{Binding TargetSummary}"
+                                   FontWeight="Bold" FontSize="12"
                                    Foreground="{StaticResource AccentBlueBrush}"
-                                   VerticalAlignment="Center" />
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding TargetSummary}" />
                     </StackPanel>
 
                     <!-- 连接状态 -->
@@ -367,6 +380,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -394,19 +408,56 @@
                                 Command="{Binding SaveConfigCommand}"
                                 ToolTip="将当前配置保存到 appsettings.json" />
 
-                        <!-- 第 1 行：应用路径 -->
+                        <!-- 第 1 行：监控目标勾选（勾选的每个应用都会被并行监控） -->
                         <TextBlock Grid.Row="1" Grid.Column="0"
+                                   Text="监控目标："
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,6" />
+                        <ItemsControl Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                      ItemsSource="{Binding TargetOptions}"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,8,6">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                                        <CheckBox Content="{Binding Name}"
+                                                  IsChecked="{Binding IsEnabled}"
+                                                  Foreground="#E0E0E0"
+                                                  VerticalAlignment="Center"
+                                                  ToolTip="勾选后监控该应用（需其以 --remote-debugging-port 启动）" />
+                                        <Button x:Name="RestartTargetButton"
+                                                Content="调试重启"
+                                                Command="{Binding RestartCommand}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Height="24" FontSize="11" Padding="10,0"
+                                                Margin="8,0,0,0"
+                                                VerticalAlignment="Center"
+                                                ToolTip="关闭并以 --remote-debugging-port 重新启动该应用（未运行则直接启动；监控会自动接入新实例）" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 第 2 行：应用路径 -->
+                        <TextBlock Grid.Row="2" Grid.Column="0"
                                    Text="应用路径："
                                    Foreground="{StaticResource MutedTextBrush}"
                                    VerticalAlignment="Center"
                                    Margin="0,0,8,0" />
-                        <TextBox Grid.Row="1" Grid.Column="1"
+                        <TextBox Grid.Row="2" Grid.Column="1"
                                  x:Name="AppPathTextBox"
                                  Style="{StaticResource DarkTextBoxStyle}"
                                  Text="{Binding AppExecutablePath, UpdateSourceTrigger=PropertyChanged}"
                                  Margin="0,0,8,0"
-                                 ToolTip="Antigravity IDE 可执行文件绝对路径" />
-                        <Button Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                                 ToolTip="Antigravity IDE 可执行文件绝对路径（供元素探索使用）" />
+                        <Button Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="2"
                                 x:Name="BrowseButton"
                                 Content="浏览..."
                                 Style="{StaticResource SecondaryButtonStyle}"
@@ -418,8 +469,109 @@
             </StackPanel>
         </Border>
 
-        <!-- ════════════════════════ 第 2 行：日志面板 ════════════════════════ -->
-        <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Padding="0">
+        <!-- ════════════════════════ 第 2 行：审批历史面板 ════════════════════════ -->
+        <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <!-- 标题栏 -->
+                    <RowDefinition Height="Auto" />
+                    <!-- 历史列表 -->
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- 标题栏：左侧标题 + 右侧审计文件位置提示 -->
+                <Grid Grid.Row="0" Margin="14,10,14,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="审批历史"
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="#F0F0F0"
+                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1"
+                               Text="审计文件: logs/approvals.jsonl"
+                               FontSize="11"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               VerticalAlignment="Center"
+                               ToolTip="每次自动确认都会以 JSONL 形式追加到该文件，可长期追溯" />
+                </Grid>
+
+                <!-- 审批历史列表：时间 / 目标 / 请求正文预览，悬停看完整信息 -->
+                <ListBox Grid.Row="1"
+                         x:Name="ApprovalHistoryListBox"
+                         ItemsSource="{Binding ApprovalHistory}"
+                         Background="{StaticResource LogBgBrush}"
+                         Foreground="#E0E0E0"
+                         BorderThickness="0"
+                         MaxHeight="110"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingStackPanel.IsVirtualizing="True"
+                         VirtualizingStackPanel.VirtualizationMode="Recycling"
+                         Padding="6,0,6,4">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0,1" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="BorderThickness" Value="0" />
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="ToolTip" Value="{Binding FullToolTip}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <ContentPresenter />
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ApprovalHistoryItem}">
+                            <Grid Margin="0,1">
+                                <Grid.ColumnDefinitions>
+                                    <!-- 时间 -->
+                                    <ColumnDefinition Width="72" />
+                                    <!-- 目标应用 -->
+                                    <ColumnDefinition Width="118" />
+                                    <!-- 异常备注 -->
+                                    <ColumnDefinition Width="Auto" />
+                                    <!-- 请求正文预览 -->
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding TimeText}"
+                                           Foreground="#7A7A8A"
+                                           FontFamily="Cascadia Code, Consolas, monospace"
+                                           FontSize="12" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding TargetName}"
+                                           Foreground="{StaticResource AccentBlueBrush}"
+                                           FontFamily="Cascadia Code, Consolas, monospace"
+                                           FontSize="12"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding StatusNote}"
+                                           Foreground="{StaticResource AccentOrangeBrush}"
+                                           FontWeight="Bold"
+                                           FontSize="12"
+                                           Margin="0,0,6,0" />
+                                <TextBlock Grid.Column="3"
+                                           Text="{Binding ContentPreview}"
+                                           Foreground="#D0D0D0"
+                                           FontFamily="Cascadia Code, Consolas, monospace"
+                                           FontSize="12"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <!-- ════════════════════════ 第 3 行：日志面板 ════════════════════════ -->
+        <Border Grid.Row="3" Style="{StaticResource CardBorderStyle}" Padding="0">
             <Grid>
                 <Grid.RowDefinitions>
                     <!-- 日志标题栏 -->

@@ -83,6 +83,13 @@ public sealed class ElementExplorerService : IElementExplorerService
         const string step = "探索界面元素";
         var discoveredElements = new List<DiscoveredElement>();
 
+        // 复位停止标志：确保上一次 StopAsync 之后再次探索时，本次的 StopAsync 仍能正常释放资源
+        // （此前版本缺少复位，导致第二次探索后 StopAsync 提前返回、临时 Electron 实例泄漏）。
+        lock (_resourceLock)
+        {
+            _stopped = false;
+        }
+
         try
         {
             _loggingService.LogInfo($"准备启动 Antigravity IDE 进行界面元素探索，可执行文件路径：{appPath}", step);
