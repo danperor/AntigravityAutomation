@@ -19,6 +19,7 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
     private readonly ITrayService _trayService;
 
     private TerminalProcessInfo? _selectedTerminal;
+    private TargetCliType _selectedCliType = TargetCliType.Claude;
     private bool _isCountdownMode = true;
     private bool _isSpecificTimeMode;
     private int _countdownHours = 5;
@@ -35,6 +36,45 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
     private string _statusMessage = "就绪，等待设置定时任务";
 
     public ObservableCollection<TerminalProcessInfo> TerminalProcesses { get; } = new();
+
+    /// <summary>
+    /// 当前选中的目标 AI CLI 工具（Claude 或 Kimi Code）。
+    /// </summary>
+    public TargetCliType SelectedCliType
+    {
+        get => _selectedCliType;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _selectedCliType, value);
+            this.RaisePropertyChanged(nameof(IsClaudeTarget));
+            this.RaisePropertyChanged(nameof(IsKimiTarget));
+            RefreshTerminals();
+        }
+    }
+
+    public bool IsClaudeTarget
+    {
+        get => _selectedCliType == TargetCliType.Claude;
+        set
+        {
+            if (value && _selectedCliType != TargetCliType.Claude)
+            {
+                SelectedCliType = TargetCliType.Claude;
+            }
+        }
+    }
+
+    public bool IsKimiTarget
+    {
+        get => _selectedCliType == TargetCliType.KimiCode;
+        set
+        {
+            if (value && _selectedCliType != TargetCliType.KimiCode)
+            {
+                SelectedCliType = TargetCliType.KimiCode;
+            }
+        }
+    }
 
     public TerminalProcessInfo? SelectedTerminal
     {
@@ -203,13 +243,13 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
     public void RefreshTerminals()
     {
         TerminalProcesses.Clear();
-        var list = _terminalFinder.FindTerminalProcesses();
+        var list = _terminalFinder.FindTerminalProcesses(SelectedCliType);
         foreach (var item in list)
         {
             TerminalProcesses.Add(item);
         }
 
-        // 默认选中第一个（优先级最高的是已识别出 Claude 的终端）
+        // 默认选中第一个（优先级最高的是当前选择的目标工具）
         SelectedTerminal = TerminalProcesses.FirstOrDefault();
     }
 
@@ -239,6 +279,7 @@ public sealed class ClaudeSchedulerViewModel : ReactiveObject
             TargetProcessId = SelectedTerminal.ProcessId,
             TargetHwnd = SelectedTerminal.MainWindowHandle,
             TargetDisplayName = SelectedTerminal.DisplayText,
+            TargetCli = SelectedCliType,
             TimingMode = IsCountdownMode ? ScheduleTimingMode.Countdown : ScheduleTimingMode.SpecificTime,
             CountdownHours = CountdownHours,
             CountdownMinutes = CountdownMinutes,

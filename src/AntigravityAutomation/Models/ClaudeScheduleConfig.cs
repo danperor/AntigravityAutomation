@@ -39,6 +39,16 @@ public sealed class ClaudeScheduleConfig
     public string TargetDisplayName { get; set; } = string.Empty;
 
     /// <summary>
+    /// 监控的目标 AI CLI 工具类型（Claude 或 Kimi Code）。
+    /// </summary>
+    public TargetCliType TargetCli { get; set; } = TargetCliType.Claude;
+
+    /// <summary>
+    /// 目标 CLI 工具友好名称。
+    /// </summary>
+    public string TargetCliDisplayName => TargetCli == TargetCliType.KimiCode ? "Kimi Code" : "Claude";
+
+    /// <summary>
     /// 定时方式。
     /// </summary>
     public ScheduleTimingMode TimingMode { get; set; } = ScheduleTimingMode.Countdown;

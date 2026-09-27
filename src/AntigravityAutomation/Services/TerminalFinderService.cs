@@ -23,7 +23,7 @@ public sealed class TerminalFinderService : ITerminalFinderService
         "cmd"
     };
 
-    public IReadOnlyList<TerminalProcessInfo> FindTerminalProcesses()
+    public IReadOnlyList<TerminalProcessInfo> FindTerminalProcesses(TargetCliType? preferredTarget = null)
     {
         var result = new List<TerminalProcessInfo>();
         var parentChildMap = BuildProcessParentMap();
@@ -63,27 +63,48 @@ public sealed class TerminalFinderService : ITerminalFinderService
                     return true;
                 }
 
-                // 嗅探是否运行 Claude：
-                // 1. 标题含有 claude (不区分大小写)
-                // 2. 子进程中包含 node.exe, claude.exe 等
-                var isClaude = false;
+                // 嗅探是否运行 Claude 或 Kimi Code：
+                TargetCliType? cliType = null;
+                var cliName = string.Empty;
                 var detail = string.Empty;
 
-                if (title.Contains("claude", StringComparison.OrdinalIgnoreCase))
+                // 1. 优先从窗口标题特征检测
+                if (title.Contains("kimi", StringComparison.OrdinalIgnoreCase))
                 {
-                    isClaude = true;
-                    detail = "窗口标题匹配到 'claude'";
+                    cliType = TargetCliType.KimiCode;
+                    cliName = "Kimi Code";
+                    detail = "窗口标题包含 'kimi'";
                 }
+                else if (title.Contains("claude", StringComparison.OrdinalIgnoreCase))
+                {
+                    cliType = TargetCliType.Claude;
+                    cliName = "Claude Code";
+                    detail = "窗口标题包含 'claude'";
+                }
+                // 2. 从父子进程链快照嗅探
                 else if (parentChildMap.TryGetValue((int)pid, out var children))
                 {
-                    var claudeChild = children.FirstOrDefault(c =>
-                        c.ProcessName.Contains("claude", StringComparison.OrdinalIgnoreCase) ||
-                        c.ProcessName.Equals("node", StringComparison.OrdinalIgnoreCase));
+                    var kimiChild = children.FirstOrDefault(c =>
+                        c.ProcessName.Contains("kimi", StringComparison.OrdinalIgnoreCase));
 
-                    if (claudeChild != null)
+                    if (kimiChild != null)
                     {
-                        isClaude = true;
-                        detail = $"检测到子进程: {claudeChild.ProcessName}.exe (PID:{claudeChild.ProcessId})";
+                        cliType = TargetCliType.KimiCode;
+                        cliName = "Kimi Code";
+                        detail = $"检测到 Kimi 子进程: {kimiChild.ProcessName}.exe (PID:{kimiChild.ProcessId})";
+                    }
+                    else
+                    {
+                        var claudeChild = children.FirstOrDefault(c =>
+                            c.ProcessName.Contains("claude", StringComparison.OrdinalIgnoreCase) ||
+                            c.ProcessName.Equals("node", StringComparison.OrdinalIgnoreCase));
+
+                        if (claudeChild != null)
+                        {
+                            cliType = TargetCliType.Claude;
+                            cliName = "Claude Code";
+                            detail = $"检测到 Claude 子进程: {claudeChild.ProcessName}.exe (PID:{claudeChild.ProcessId})";
+                        }
                     }
                 }
 
@@ -93,7 +114,8 @@ public sealed class TerminalFinderService : ITerminalFinderService
                     ProcessName = procName,
                     MainWindowTitle = string.IsNullOrWhiteSpace(title) ? procName : title,
                     MainWindowHandle = hwnd,
-                    IsClaudeDetected = isClaude,
+                    DetectedCliType = cliType,
+                    DetectedCliName = cliName,
                     DetailDescription = detail
                 });
             }
@@ -105,11 +127,31 @@ public sealed class TerminalFinderService : ITerminalFinderService
             return true;
         }, IntPtr.Zero);
 
-        // 优先将检测到 Claude 的终端排在最前面，其次按 PID 排序
-        return result
-            .GroupBy(p => p.MainWindowHandle) // 按窗口句柄去重
-            .Select(g => g.First())
-            .OrderByDescending(p => p.IsClaudeDetected)
+        // 去重
+        var uniqueList = result
+            .GroupBy(p => p.MainWindowHandle)
+            .Select(g => g.First());
+
+        // 依据当前偏好的 CLI 类型进行动态加权排序：目标工具优先排在第一位
+        if (preferredTarget == TargetCliType.KimiCode)
+        {
+            return uniqueList
+                .OrderByDescending(p => p.DetectedCliType == TargetCliType.KimiCode)
+                .ThenByDescending(p => p.DetectedCliType == TargetCliType.Claude)
+                .ThenByDescending(p => p.ProcessId)
+                .ToList();
+        }
+        else if (preferredTarget == TargetCliType.Claude)
+        {
+            return uniqueList
+                .OrderByDescending(p => p.DetectedCliType == TargetCliType.Claude)
+                .ThenByDescending(p => p.DetectedCliType == TargetCliType.KimiCode)
+                .ThenByDescending(p => p.ProcessId)
+                .ToList();
+        }
+
+        return uniqueList
+            .OrderByDescending(p => p.DetectedCliType.HasValue)
             .ThenByDescending(p => p.ProcessId)
             .ToList();
     }

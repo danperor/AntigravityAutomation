@@ -513,9 +513,9 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="⏱️ Claude 终端定时指令调度器"
+                    <TextBlock Text="⏱️ AI 终端定时指令调度器 (Claude / Kimi Code)"
                                FontSize="15" FontWeight="Bold" Foreground="#FFFFFF" />
-                    <TextBlock Text="精准绑定 Claude 终端，在套餐额度重置时自动唤醒并注入指令"
+                    <TextBlock Text="精准绑定 Claude 或 Kimi Code 终端，在套餐额度重置时自动唤醒并注入指令"
                                FontSize="11.5" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
                 </StackPanel>
                 <Border Grid.Column="1" Background="#161622" BorderBrush="#35354D" BorderThickness="1"
@@ -534,8 +534,26 @@
                 <!-- 1. 目标终端选择 -->
                 <Border Style="{StaticResource SectionCardStyle}">
                     <StackPanel>
-                        <TextBlock Text="1. 目标终端窗口 (智能嗅探 Claude 进程)"
-                                   FontWeight="SemiBold" FontSize="13" Foreground="#FFFFFF" Margin="0,0,0,8" />
+                        <!-- 目标 CLI 工具类型切换行 -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="1. 监控目标 CLI 工具："
+                                       FontWeight="SemiBold" FontSize="13" Foreground="#FFFFFF"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <RadioButton Content="Claude (Claude Code)"
+                                             IsChecked="{Binding IsClaudeTarget, Mode=TwoWay}"
+                                             GroupName="TargetCliToolGroup"
+                                             Margin="0,0,16,0" />
+                                <RadioButton Content="Kimi Code (Kimi CLI)"
+                                             IsChecked="{Binding IsKimiTarget, Mode=TwoWay}"
+                                             GroupName="TargetCliToolGroup" />
+                            </StackPanel>
+                        </Grid>
+
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -560,7 +578,7 @@
                                     Command="{Binding FlashTargetCommand}"
                                     ToolTip="短暂置顶并闪烁所选终端窗口，以供肉眼确认" />
                         </Grid>
-                        <TextBlock Text="★ 带有绿色标记者为检测到运行 Claude 的终端；点击【闪烁定位】可快速核对。"
+                        <TextBlock Text="★ 带有绿色标记者为检测到对应 CLI 工具的终端；切换上方工具会自动重新置顶推荐。"
                                    FontSize="11" Foreground="{StaticResource MutedTextBrush}" Margin="2,7,0,0" />
                     </StackPanel>
                 </Border>

@@ -68,9 +68,10 @@ public sealed class ClaudeSchedulerService : IClaudeSchedulerService, IDisposabl
             _schedulerTask = Task.Run(() => RunSchedulerLoopAsync(token), token);
         }
 
-        const string step = "Claude定时调度";
+        var toolName = config.TargetCliDisplayName;
+        var step = $"{toolName}定时调度";
         var modeDesc = config.TimingMode == ScheduleTimingMode.Countdown ? "倒计时模式" : "定点模式";
-        var msg = $"已启动 Claude 终端定时任务 [{modeDesc}]，预计于 {TargetTime:yyyy-MM-dd HH:mm:ss} 触发执行 (目标PID: {config.TargetProcessId})";
+        var msg = $"已启动 {toolName} 终端定时任务 [{modeDesc}]，预计于 {TargetTime:yyyy-MM-dd HH:mm:ss} 触发执行 (目标PID: {config.TargetProcessId})";
 
         _loggingService.LogInfo(msg, step);
         StatusChanged?.Invoke(this, $"定时中: 目标时间 {TargetTime:HH:mm:ss}");
@@ -93,13 +94,15 @@ public sealed class ClaudeSchedulerService : IClaudeSchedulerService, IDisposabl
             RemainingTime = TimeSpan.Zero;
         }
 
-        _loggingService.LogInfo("已手动取消 Claude 终端定时任务", "Claude定时调度");
+        var toolName = ActiveConfig?.TargetCliDisplayName ?? "AI";
+        _loggingService.LogInfo($"已手动取消 {toolName} 终端定时任务", $"{toolName}定时调度");
         StatusChanged?.Invoke(this, "已取消");
     }
 
     private async Task RunSchedulerLoopAsync(CancellationToken token)
     {
-        const string step = "Claude定时调度";
+        var toolName = ActiveConfig?.TargetCliDisplayName ?? "AI";
+        var step = $"{toolName}定时调度";
 
         try
         {
@@ -144,8 +147,8 @@ public sealed class ClaudeSchedulerService : IClaudeSchedulerService, IDisposabl
                 cfg.AutoPressEnter);
 
             var finishMsg = success
-                ? $"已在 {DateTime.Now:HH:mm:ss} 成功向 Claude 终端 (PID: {cfg.TargetProcessId}) 发送指令并确认！"
-                : $"向 Claude 终端 (PID: {cfg.TargetProcessId}) 注入指令失败，请检查终端窗口是否已关闭。";
+                ? $"已在 {DateTime.Now:HH:mm:ss} 成功向 {cfg.TargetCliDisplayName} 终端 (PID: {cfg.TargetProcessId}) 发送指令并确认！"
+                : $"向 {cfg.TargetCliDisplayName} 终端 (PID: {cfg.TargetProcessId}) 注入指令失败，请检查终端窗口是否已关闭。";
 
             ExecutionCompleted?.Invoke(this, (success, finishMsg));
         }

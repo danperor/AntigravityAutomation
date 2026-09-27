@@ -29,9 +29,24 @@ public sealed class TerminalProcessInfo
     public IntPtr MainWindowHandle { get; init; }
 
     /// <summary>
-    /// 是否在子进程或进程链中检测到 Claude (如 node.exe, claude.exe 或命令行匹配)。
+    /// 检测到的 AI CLI 工具类型（Claude 或 Kimi Code），未检测到则为 null。
     /// </summary>
-    public bool IsClaudeDetected { get; init; }
+    public TargetCliType? DetectedCliType { get; init; }
+
+    /// <summary>
+    /// 检测到的 CLI 工具友好名称（如 "Claude Code", "Kimi Code"）。
+    /// </summary>
+    public string DetectedCliName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 是否在子进程或窗口标题中检测到 Claude。
+    /// </summary>
+    public bool IsClaudeDetected => DetectedCliType == TargetCliType.Claude;
+
+    /// <summary>
+    /// 是否在子进程或窗口标题中检测到 Kimi Code。
+    /// </summary>
+    public bool IsKimiDetected => DetectedCliType == TargetCliType.KimiCode;
 
     /// <summary>
     /// 探测到的详细标签描述（如子进程名称、标题摘要等）。
@@ -45,7 +60,13 @@ public sealed class TerminalProcessInfo
     {
         get
         {
-            var badge = IsClaudeDetected ? " ★[已识别为Claude]" : "";
+            var badge = DetectedCliType switch
+            {
+                TargetCliType.Claude => " ★[已识别为 Claude]",
+                TargetCliType.KimiCode => " ★[已识别为 Kimi Code]",
+                _ => ""
+            };
+
             var title = string.IsNullOrWhiteSpace(MainWindowTitle) ? "(无标题窗口)" : MainWindowTitle;
             if (title.Length > 45)
             {
